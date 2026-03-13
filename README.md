@@ -11,7 +11,7 @@ Class 05 [Data viz with ggplot](class05/class05datavizwithggplot.pdf)
 
 Class 06 [R Functions](class06/class06.md)
 
-Class 07 [Machine Learning)(Class07/class07.md)  
+Class 07 [Machine Learning](Class07/class07.md)  
 
 Class 08 [Machine Learning Mini Project](class08/class08.md) 
 
