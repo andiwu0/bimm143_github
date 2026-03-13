@@ -1,0 +1,198 @@
+---
+title: "Class 14: RNASeq Mini-Project"
+author: "Andrew Duong (PID: A18129684)"
+format: pdf
+toc: true
+---
+
+## Background
+
+The data for today's mini-project comes from a knock-down study of an important HOX gene. 
+
+## Data Import
+
+```{r}
+countData <- read.csv("GSE37704_featurecounts.csv", row.names = 1)
+colData <- read.csv("GSE37704_metadata.csv", row.names = 1)
+```
+
+Have a wee peak at these: 
+
+```{r}
+head(countData)
+head(colData)
+```
+
+### Clean up (data tidying)
+
+```{r}
+ncol(countData) == nrow(colData)
+```
+
+```{r}
+countData <- as.matrix(countData[, -1])
+head(countData)
+```
+
+```{r}
+countData = countData[rowSums(countData) > 0, ]
+head(countData)
+```
+
+
+## DESeq Analysis
+
+```{r, message = F}
+library(DESeq2)
+```
+
+### Setting up the DESeq object
+
+```{r}
+dds <- DESeqDataSetFromMatrix(countData = countData,
+                              colData = colData,
+                              design = ~condition)
+```
+
+### Running DESeq
+```{r}
+dds = DESeq(dds)
+```
+
+
+### Getting results
+```{r}
+res <- results(dds)
+res
+```
+
+```{r}
+summary(res)
+```
+
+## Volcano Plot
+
+```{r}
+library(ggplot2)
+```
+```{r}
+ggplot(res) +
+  aes(log2FoldChange,
+      -log10(padj)) +
+  geom_point()
+```
+
+```{r}
+mycols <- rep("gray", nrow(res))
+
+mycols[res$log2FoldChange > 2 ] <- "purple"
+mycols[res$log2FoldChange < -2 ] <- "green"
+
+# Color gray those with adjusted p-value more than 0.01
+mycols[ res$padj > 0.01 ] <- "gray"
+
+ggplot(res) +
+  aes(log2FoldChange,
+      -log10(padj)) +
+  geom_point(color = mycols) +
+  xlab("Log2(FoldChange)") +
+  ylab("-Log(P-value)") +
+  geom_vline(xintercept = c(-2,2)) +
+  geom_hline(yintercept = -log10(0.01))
+```
+
+```{r}
+write.csv(res, file = "results.csv")
+```
+
+
+## Add Annotation
+
+```{r}
+library("AnnotationDbi")
+library("org.Hs.eg.db")
+
+res$symbol = mapIds(org.Hs.eg.db,
+                    keys = row.names(res),
+                    keytype = "ENSEMBL",
+                    column = "SYMBOL",
+                    multiVals = "first")
+
+res$entrez = mapIds(org.Hs.eg.db,
+                    keys = row.names(res),
+                    keytype = "ENSEMBL",
+                    column = "ENTREZID",
+                    multiVals = "first")
+
+res$name = mapIds(org.Hs.eg.db,
+                  keys = row.names(res),
+                  keytype = "ENSEMBL",
+                  column = "GENENAME",
+                  multiVals = "first")
+```
+
+## Pathway Analysis
+
+```{r, message = FALSE}
+library(gage)
+library(gageData)
+library(pathview)
+```
+
+```{r}
+data("kegg.sets.hs")
+```
+
+```{r}
+foldchanges <- res$log2FoldChange
+names(foldchanges) <- res$symbol
+head(foldchanges)
+```
+```{r}
+names(foldchanges) <- res$entrez
+```
+
+### KEGG
+
+```{r}
+keggres = gage(foldchanges, gsets = kegg.sets.hs)
+```
+
+```{r}
+head(keggres$less)
+```
+
+```{r}
+pathview(foldchanges, pathway.id = "hsa04110")
+```
+
+![](hsa04110.pathview.png)
+
+### GO
+
+```{r}
+data(go.sets.hs)
+data(go.subs.hs)
+
+gobpsets = go.sets.hs[go.subs.hs$BP]
+
+gobpres = gage(foldchanges, gsets=gobpsets)
+
+lapply(gobpres, head)
+```
+
+
+### Reactome
+
+```{r}
+sig_genes <- res[res$padj <= 0.05 & !is.na(res$padj), "symbol"]
+print(paste("Total number of significant genes:", length(sig_genes)))
+```
+
+```{r}
+write.table(sig_genes, file="significant_genes.txt", row.names=FALSE, col.names=FALSE, quote=FALSE)
+```
+
+> Q. Q: What pathway has the most significant “Entities p-value”? Do the most significant pathways listed match your previous KEGG results? What factors could cause differences between the two methods?
+
+The Cell cycle, Mitotic has the most significant value. Yes they match the KEGG results. They may differ because they use different statistical methods to analyze the data. 
